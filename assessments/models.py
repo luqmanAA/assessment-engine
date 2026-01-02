@@ -1,3 +1,66 @@
+from django.core.validators import MaxValueValidator
 from django.db import models
+from django.utils import timezone
+
+from base.models import BaseModel
+
 
 # Create your models here.
+
+
+class Exam(BaseModel):
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    duration = models.DurationField(help_text="Duration of the exam")
+    course = models.CharField(max_length=255)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    def __str__(self):
+        return self.title
+
+
+class Question(BaseModel):
+    QUESTION_TYPES = (
+        ('MCQ', 'Multiple Choice'),
+        ('SHORT', 'Short Answer'),
+    )
+    exam = models.ForeignKey(Exam, related_name='questions', on_delete=models.CASCADE)
+    question_type = models.CharField(max_length=10, choices=QUESTION_TYPES)
+    text = models.TextField()
+    expected_answer = models.TextField(help_text="Correct answer text or option")
+
+    def __str__(self):
+        return f"{self.question_type}: {self.text[:50]}"
+
+
+class QuestionOption(BaseModel):
+    question = models.ForeignKey(Question, related_name='options', on_delete=models.CASCADE)
+    text = models.CharField(max_length=255)
+    is_correct = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"{self.text} for Question ID {self.question.id}"
+
+
+class Submission(BaseModel):
+    student = models.ForeignKey('auth.User', related_name='submissions', on_delete=models.CASCADE)
+    exam = models.ForeignKey(Exam, related_name='submissions', on_delete=models.CASCADE)
+    grade = models.FloatField(default=0.0)
+    submitted_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ('student', 'exam')
+
+    def __str__(self):
+        return f"{self.student.username}: {self.exam.title}"
+
+
+class SubmissionAnswer(BaseModel):
+    submission = models.ForeignKey(Submission, related_name='answers', on_delete=models.CASCADE)
+    question = models.ForeignKey(Question, related_name='student_answers', on_delete=models.CASCADE)
+    selected_option = models.ForeignKey(QuestionOption, null=True, blank=True, on_delete=models.SET_NULL)
+    short_answer_text = models.TextField(blank=True, null=True)
+    score = models.FloatField(default=0.0, validators=[MaxValueValidator(0.0)])
+
+    def __str__(self):
+        return f"Answer to Question ID {self.question.id} in Submission ID {self.submission.id}"
