@@ -44,7 +44,7 @@ services:
       redis:
         condition: service_healthy
     command: >
-      bash -c "uv run manage.py makemigrations &&
+      bash -c "uv run manage.py makemigrations assessments &&
                uv run manage.py migrate &&
                uv run manage.py runserver 0.0.0.0:8000"
 
