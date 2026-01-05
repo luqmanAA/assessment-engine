@@ -51,11 +51,12 @@ class Submission(BaseModel):
     student = models.ForeignKey('auth.User', related_name='submissions', on_delete=models.CASCADE)
     exam = models.ForeignKey(Exam, related_name='submissions', on_delete=models.CASCADE)
     grade = models.DecimalField(
+        null=True,
         max_digits=10,
         decimal_places=2,
         validators=[MinValueValidator(0.0), MaxValueValidator(100.0)]
     )
-    total_score = models.FloatField(validators=[MinValueValidator(0.0)])
+    total_score = models.FloatField(null=True, validators=[MinValueValidator(0.0)])
     is_completed = models.BooleanField(default=False)
     completed_at = models.DateTimeField(null=True, blank=True)
 

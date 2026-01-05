@@ -3,6 +3,7 @@ from rest_framework.exceptions import ValidationError
 
 from assessments.models import QuestionOption, Question, Exam, Submission, StudentAnswer
 from assessments.services import GradingService
+from assessments.tasks import grade_submission_task
 
 
 class QuestionOptionSerializer(serializers.ModelSerializer):
@@ -115,5 +116,7 @@ class SubmissionSerializer(serializers.ModelSerializer):
                 question=question,
                 defaults=answer_data
             )
-        GradingService.grade_submission(submission)
+
+        # Trigger grading asynchronously
+        grade_submission_task.delay(submission.id)
         return submission
