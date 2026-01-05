@@ -117,10 +117,10 @@ class SubmissionSerializer(serializers.ModelSerializer):
         user_submission = Submission.objects.filter(student=user, exam=exam).first()
         
         if user_submission:
-            # if user_submission.is_completed:
-            #     raise serializers.ValidationError({
-            #         "non_field_errors": "You have already completed this exam and cannot submit again."
-            #     })
+            if user_submission.is_completed:
+                raise serializers.ValidationError({
+                    "non_field_errors": "You have already completed this exam and cannot submit again."
+                })
 
             # Duration Validation
             from django.utils import timezone
