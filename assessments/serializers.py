@@ -1,16 +1,17 @@
+from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-from rest_framework.serializers import ModelSerializer
 
 from assessments.models import QuestionOption, Question, Exam, Submission, StudentAnswer
+from assessments.services import GradingService
 
 
-class QuestionOptionSerializer(ModelSerializer):
+class QuestionOptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = QuestionOption
         fields = ('id', 'text')
 
 
-class QuestionSerializer(ModelSerializer):
+class QuestionSerializer(serializers.ModelSerializer):
     options = QuestionOptionSerializer(many=True, read_only=True)
 
     class Meta:
@@ -23,7 +24,7 @@ class QuestionSerializer(ModelSerializer):
         )
 
 
-class ExamSerializer(ModelSerializer):
+class ExamSerializer(serializers.ModelSerializer):
     questions = QuestionSerializer(many=True, read_only=True)
 
     class Meta:
@@ -39,7 +40,13 @@ class ExamSerializer(ModelSerializer):
         )
 
 
-class StudentAnswerSerializer(ModelSerializer):
+class StudentAnswerSerializer(serializers.ModelSerializer):
+    question = serializers.PrimaryKeyRelatedField(
+        queryset=Question.objects.all(),
+        error_messages={
+            'does_not_exist': 'The specified question does not exist.'
+        }
+    )
     class Meta:
         model = StudentAnswer
         fields = (
@@ -57,7 +64,9 @@ class StudentAnswerSerializer(ModelSerializer):
             if not selected_option:
                 raise ValidationError("MCQ questions require a selected option.")
             if selected_option.question != question:
-                raise ValidationError("Selected option does not belong to the specified question.")
+                raise ValidationError({
+                    "selected_option": "Selected option does not belong to the specified question."
+                })
 
         elif question.question_type == 'SHORT':
             if not short_answer_text:
@@ -66,7 +75,7 @@ class StudentAnswerSerializer(ModelSerializer):
         return data
 
 
-class SubmissionSerializer(ModelSerializer):
+class SubmissionSerializer(serializers.ModelSerializer):
     answers = StudentAnswerSerializer(many=True)
 
     class Meta:
@@ -75,21 +84,36 @@ class SubmissionSerializer(ModelSerializer):
             'id',
             'exam',
             'grade',
-            'submitted_at',
+            'completed_at',
             'answers'
         )
         read_only_fields = (
             'grade',
-            'submitted_at',
+            'completed_at',
             'student'
         )
+
+    def validate(self, attrs):
+        user = self.context.get('user')
+        exam = attrs.get('exam')
+        user_submission = Submission.objects.filter(student=user, exam=exam).first()
+        if user_submission.is_completed  or user_submission.answers.count() == exam.questions.count():
+            raise serializers.ValidationError({
+                "non_field_errors": "You have already completed this exam and cannot submit again."
+            })
+        return attrs
 
     def create(self, validated_data):
         answers_data = validated_data.pop('answers')
 
-        submission = Submission.objects.create(**validated_data)
+        submission, _ = Submission.objects.get_or_create(**validated_data)
 
         for answer_data in answers_data:
-            StudentAnswer.objects.create(submission=submission, **answer_data)
-
+            question = answer_data.pop('question', None)
+            StudentAnswer.objects.update_or_create(
+                submission=submission,
+                question=question,
+                defaults=answer_data
+            )
+        GradingService.grade_submission(submission)
         return submission

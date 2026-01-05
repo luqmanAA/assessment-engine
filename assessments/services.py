@@ -6,6 +6,8 @@ from django.conf import settings
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
+from assessments.models import Submission
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,11 +27,12 @@ class MockGrader(BaseGrader):
         if not expected or not actual:
             return 0.0
 
-        try:
-            # Simple exact match check first for efficiency
-            if expected.strip().lower() == actual.strip().lower():
-                return 1.0
+        expected= expected.strip().lower()
+        actual = actual.strip().lower()
+        if expected == actual:
+            return 1.0
 
+        try:
             vectorizer = TfidfVectorizer()
             tfidf_matrix = vectorizer.fit_transform([expected, actual])
             similarity = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
@@ -82,3 +85,36 @@ class GradingFactory:
             return LLMGrader()
         else:
             return MockGrader()
+
+
+class GradingService:
+
+    @staticmethod
+    def grade_submission(submission: Submission):
+        grader = GradingFactory.get_grader()
+        total_score = 0.0
+
+        for answer in submission.answers.all():
+            question = answer.question
+            score = 0.0
+
+            if question.question_type == 'MCQ':
+                if answer.selected_option and (
+                    question.expected_answer == str(answer.id) or
+                    answer.selected_option.is_correct
+                ):
+                    score = 1.0
+            elif question.question_type == 'SHORT':
+                score = grader.grade(question.expected_answer, answer.short_answer_text or "")
+
+            answer.score = score
+            answer.save()
+            total_score += score
+
+        question_count = submission.exam.questions.count()
+        submission.total_score = total_score
+        submission.grade = (total_score/question_count) *100 if question_count > 0 else 0.0
+        if submission.answers.count() == question_count:
+            submission.is_completed = True
+
+        submission.save()

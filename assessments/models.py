@@ -46,7 +46,9 @@ class Submission(BaseModel):
     student = models.ForeignKey('auth.User', related_name='submissions', on_delete=models.CASCADE)
     exam = models.ForeignKey(Exam, related_name='submissions', on_delete=models.CASCADE)
     grade = models.FloatField(default=0.0)
-    submitted_at = models.DateTimeField(default=timezone.now)
+    total_score = models.FloatField(default=0.0)
+    is_completed = models.BooleanField(default=False)
+    completed_at = models.DateTimeField()
 
     class Meta:
         unique_together = ('student', 'exam')
