@@ -1,0 +1,74 @@
+services:
+  db:
+    image: postgres:17-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=assessment_engine_db
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d assessment_engine_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    image: assessment-engine:latest
+    volumes:
+      - assessments_migrations:/app/assessments/migrations
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=True
+      - DATABASE_URL=postgres://user:password@db:5432/assessment_engine_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - ALLOWED_HOSTS=*
+      - GRADING_ENGINE=${GRADING_ENGINE:-MOCK}
+      - LLM_PROVIDER=${LLM_PROVIDER:-GEMINI}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      bash -c "uv run manage.py makemigrations &&
+               uv run manage.py migrate &&
+               uv run manage.py runserver 0.0.0.0:8000"
+
+  worker:
+    image: assessment-engine:latest
+    volumes:
+      - assessments_migrations:/app/assessments/migrations
+    environment:
+      - DATABASE_URL=postgres://user:password@db:5432/assessment_engine_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - GRADING_ENGINE=${GRADING_ENGINE:-MOCK}
+      - LLM_PROVIDER=${LLM_PROVIDER:-GEMINI}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      web:
+        condition: service_started
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A main worker --loglevel=info
+
+volumes:
+  postgres_data:
+  assessments_migrations:

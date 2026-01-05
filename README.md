@@ -82,6 +82,32 @@ uv run manage.py generate_sample_data
 
 ---
 
+### Docker Setup (Recommended)
+
+The easiest way to run the entire stack (Django, PostgreSQL, Redis, Celery) is using Docker Compose.
+
+1. **Build and start services:**
+   ```bash
+   docker build -t assessment-engine . && docker compose up -d
+   ```
+
+2. **Initialize the database (first time):**
+   In a new terminal:
+   ```bash
+   # Run migrations (already handled by compose, but for safety)
+   docker compose exec web uv run manage.py makemigrations
+   docker compose exec web uv run manage.py migrate
+   
+   # Create a superuser
+   docker compose exec web uv run manage.py createsuperuser
+   
+   # Seed data
+   docker compose exec web uv run manage.py seed_students
+   docker compose exec web uv run manage.py generate_sample_data
+   ```
+
+The application will be available at `http://localhost:8000`.
+
 ## Running the Application
 
 ### Start the Development Server
