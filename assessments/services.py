@@ -1,5 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from django.conf import settings
 from django.utils import timezone
@@ -35,7 +36,7 @@ class BaseGrader(ABC):
 
 class MockGrader(BaseGrader):
 
-    def evaluate_result(self, expected: str, actual: str, template: str = None) -> float:
+    def evaluate_result(self, expected: str, actual: str, template: str = None) -> Optional[float]:
         try:
             expected = expected.strip().lower()
             actual = actual.strip().lower()
@@ -43,9 +44,10 @@ class MockGrader(BaseGrader):
             tfidf_matrix = vectorizer.fit_transform([expected, actual])
             similarity = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
             return float(similarity)
+
         except Exception as e:
             logger.error(f"Error in MockGrader: {e}")
-            return 0.0
+            return None
 
 
 class LLMGrader(BaseGrader):
@@ -79,8 +81,7 @@ class LLMGrader(BaseGrader):
 
     def evaluate_result(self, expected: str, actual: str, template: str = None) -> float:
         prompt = self.prepare_prompt(expected, actual, template)
-        score = self.backend.generate_score(prompt)
-        return score if score is not None else 0.0
+        return self.backend.generate_score(prompt)
 
 
 class GradingFactory:
@@ -118,9 +119,10 @@ class GradingService:
                 template = submission.exam.grading_prompt
                 score = grader.grade(question.expected_answer, answer.short_answer_text or "", template=template)
 
-            answer.score = score
-            answer.save()
-            total_score += score
+            if score is not None:
+                answer.score = score
+                answer.save()
+                total_score += score
 
         question_count = submission.exam.questions.count()
         submission.total_score = total_score

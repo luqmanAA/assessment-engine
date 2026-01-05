@@ -35,7 +35,11 @@ class SubmissionViewSet(ModelViewSet):
         return super().retrieve(request, *args, **kwargs)
 
     def get_queryset(self):
-        return Submission.objects.filter(student=self.request.user)
+        return (
+            Submission.objects.filter(student=self.request.user)
+            .select_related('exam',)
+            .prefetch_related('answers__question', 'answers__selected_option')
+        )
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data, context={'user': request.user})
