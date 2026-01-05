@@ -79,7 +79,7 @@ class StudentAnswer(BaseModel):
     question = models.ForeignKey(Question, related_name='student_answers', on_delete=models.CASCADE)
     selected_option = models.ForeignKey(QuestionOption, null=True, blank=True, on_delete=models.SET_NULL)
     short_answer_text = models.TextField(blank=True, null=True)
-    score = models.FloatField(default=0.0, validators=[MinValueValidator(0.0)])
+    score = models.FloatField(null=True, validators=[MinValueValidator(0.0)])
 
     class Meta:
         indexes = [

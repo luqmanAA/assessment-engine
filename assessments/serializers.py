@@ -2,7 +2,6 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
 from assessments.models import QuestionOption, Question, Exam, Submission, StudentAnswer
-from assessments.services import GradingService
 from assessments.tasks import grade_submission_task
 
 
