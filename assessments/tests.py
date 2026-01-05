@@ -1,6 +1,7 @@
 from datetime import timedelta
 from django.test import TestCase, override_settings
 from django.contrib.auth.models import User
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework import status
 from .models import Exam, Question, QuestionOption, Submission
@@ -76,7 +77,8 @@ class SubmissionTestCase(TestCase):
             "answers": [
                 {"question": self.q1.id, "selected_option": self.q1_opt2.id},
                 {"question": self.q2.id, "short_answer_text": "Artificial Intelligence is simulation of human intelligence."}
-            ]
+            ],
+            "started_at": timezone.now(),
         }
         
         response = self.client.post('/api/submissions/', data, format='json')

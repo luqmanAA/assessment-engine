@@ -105,7 +105,6 @@ class SubmissionSerializer(serializers.ModelSerializer):
         read_only_fields = (
             'grade',
             'is_completed',
-            'started_at',
             'updated_at',
             'completed_at',
             'student'
@@ -115,19 +114,21 @@ class SubmissionSerializer(serializers.ModelSerializer):
         user = self.context.get('user')
         exam = attrs.get('exam')
         user_submission = Submission.objects.filter(student=user, exam=exam).first()
-        
+
+
         if user_submission:
+            attrs['started_at'] = user_submission.started_at
             if user_submission.is_completed:
                 raise serializers.ValidationError({
                     "non_field_errors": "You have already completed this exam and cannot submit again."
                 })
 
-            # Duration Validation
-            from django.utils import timezone
-            if user_submission.started_at + exam.duration < timezone.now():
-                raise serializers.ValidationError({
-                    "non_field_errors": "The time for this exam has expired."
-                })
+        # Duration Validation
+        from django.utils import timezone
+        if attrs['started_at'] + exam.duration < timezone.now():
+            raise serializers.ValidationError({
+                "non_field_errors": "The time for this exam has expired."
+            })
 
         # Strict Validation: Ensure all questions belong to the submitted exam
         answers_data = attrs.get('answers', [])
