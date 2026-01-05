@@ -50,17 +50,34 @@ class Submission(BaseModel):
 
     class Meta:
         unique_together = ('student', 'exam')
+        indexes = [
+            models.Index(fields=[
+                'student',
+                'exam',
+                'grade',
+            ]),
+        ]
 
     def __str__(self):
         return f"{self.student.username}: {self.exam.title}"
 
 
-class SubmissionAnswer(BaseModel):
+class StudentAnswer(BaseModel):
     submission = models.ForeignKey(Submission, related_name='answers', on_delete=models.CASCADE)
     question = models.ForeignKey(Question, related_name='student_answers', on_delete=models.CASCADE)
     selected_option = models.ForeignKey(QuestionOption, null=True, blank=True, on_delete=models.SET_NULL)
     short_answer_text = models.TextField(blank=True, null=True)
     score = models.FloatField(default=0.0, validators=[MaxValueValidator(0.0)])
+
+    class Meta:
+        indexes = [
+            models.Index(fields=[
+                'submission',
+                'question',
+                'selected_option',
+                'short_answer_text',
+            ]),
+        ]
 
     def __str__(self):
         return f"Answer to Question ID {self.question.id} in Submission ID {self.submission.id}"
