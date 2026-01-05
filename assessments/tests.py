@@ -1,5 +1,5 @@
 from datetime import timedelta
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.contrib.auth.models import User
 from rest_framework.test import APIClient
 from rest_framework import status
@@ -67,6 +67,7 @@ class SubmissionTestCase(TestCase):
             expected_answer="Artificial Intelligence is simulation of human intelligence."
         )
 
+    @override_settings(GRADING_ENGINE='MOCK')
     def test_submission_grading(self):
         data = {
             "exam": self.exam.id,
@@ -82,5 +83,7 @@ class SubmissionTestCase(TestCase):
         submission_id = response.data['id']
         submission = Submission.objects.get(id=submission_id)
         
-        # Check grade (renamed field)
-        self.assertEqual(submission.grade, 2.0)
+        # Check grade (percentage)
+        self.assertEqual(submission.grade, 100.0)
+        # Check total score
+        self.assertEqual(submission.total_score, 2.0)

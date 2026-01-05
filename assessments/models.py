@@ -1,4 +1,4 @@
-from django.core.validators import MaxValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 
@@ -50,10 +50,14 @@ class QuestionOption(BaseModel):
 class Submission(BaseModel):
     student = models.ForeignKey('auth.User', related_name='submissions', on_delete=models.CASCADE)
     exam = models.ForeignKey(Exam, related_name='submissions', on_delete=models.CASCADE)
-    grade = models.FloatField(default=0.0)
-    total_score = models.FloatField(default=0.0)
+    grade = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(0.0), MaxValueValidator(100.0)]
+    )
+    total_score = models.FloatField(validators=[MinValueValidator(0.0)])
     is_completed = models.BooleanField(default=False)
-    completed_at = models.DateTimeField()
+    completed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         unique_together = ('student', 'exam')
@@ -74,7 +78,7 @@ class StudentAnswer(BaseModel):
     question = models.ForeignKey(Question, related_name='student_answers', on_delete=models.CASCADE)
     selected_option = models.ForeignKey(QuestionOption, null=True, blank=True, on_delete=models.SET_NULL)
     short_answer_text = models.TextField(blank=True, null=True)
-    score = models.FloatField(default=0.0, validators=[MaxValueValidator(0.0)])
+    score = models.FloatField(default=0.0, validators=[MinValueValidator(0.0)])
 
     class Meta:
         indexes = [

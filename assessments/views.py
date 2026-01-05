@@ -6,7 +6,7 @@ from rest_framework.viewsets import ReadOnlyModelViewSet, ModelViewSet
 
 from assessments.models import Exam, Submission
 from assessments.serializers import ExamSerializer, SubmissionSerializer
-from assessments.services import GradingFactory
+from assessments.services import GradingService
 from helpers.permissions import IsOwnerOnly
 
 
@@ -15,11 +15,12 @@ from helpers.permissions import IsOwnerOnly
 class ExamViewSet(ReadOnlyModelViewSet):
     queryset = Exam.objects.all()
     serializer_class = ExamSerializer
+    permission_classes = [IsAuthenticated]
 
 
 class SubmissionViewSet(ModelViewSet):
     serializer_class = SubmissionSerializer
-    permission_classes = (IsOwnerOnly,)
+    permission_classes = (IsAuthenticated, IsOwnerOnly)
     http_method_names = ('get', 'post', 'head', 'options',)
 
     @extend_schema(
@@ -41,6 +42,13 @@ class SubmissionViewSet(ModelViewSet):
         serializer = self.get_serializer(data=request.data, context={'user': request.user})
         serializer.is_valid(raise_exception=True)
         submission = self.perform_create(serializer)
+        
+        # Trigger grading
+        GradingService.grade_submission(submission)
+        
+        # Refresh to get updated scores
+        submission.refresh_from_db()
+        
         headers = self.get_success_headers(serializer.data)
         return Response(SubmissionSerializer(submission).data, status=HTTP_201_CREATED, headers=headers)
 

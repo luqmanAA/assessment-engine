@@ -155,4 +155,13 @@ SPECTACULAR_SETTINGS = {
 }
 
 # Grading Service Configuration
-GRADING_ENGINE = env('GRADING_ENGINE')  # Options: 'MOCK', 'LLM'
+GRADING_ENGINE = env('GRADING_ENGINE', default='MOCK')  # Options: 'MOCK', 'LLM'
+
+LLM_PROVIDER = env('LLM_PROVIDER', default='GEMINI')  # Options: 'GEMINI', 'OPENAI'
+
+GOOGLE_API_KEY = env('GOOGLE_API_KEY', default='')
+
+GEMINI_MODEL = env('OPENAI_MODEL', default='gemini-pro')
+
+OPENAI_MODEL = env('OPENAI_MODEL', default='gpt-3.5-turbo')
+

@@ -1,20 +1,20 @@
-import os
 import logging
 from abc import ABC, abstractmethod
 
 from django.conf import settings
+from django.utils import timezone
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 from assessments.models import Submission
+from helpers.llm_backends import LLMBackend, OpenAIBackend, GeminiBackend
 
 logger = logging.getLogger(__name__)
 
 
 class BaseGrader(ABC):
-
     @abstractmethod
-    def grade(self, expected: str, actual: str) -> float:
+    def grade(self, expected: str, actual: str, template: str = None) -> float:
         """
         Compare expected answer and actual answer.
         Returns a score between 0.0 and 1.0.
@@ -23,11 +23,11 @@ class BaseGrader(ABC):
 
 
 class MockGrader(BaseGrader):
-    def grade(self, expected: str, actual: str) -> float:
+    def grade(self, expected: str, actual: str, template: str = None) -> float:
         if not expected or not actual:
             return 0.0
 
-        expected= expected.strip().lower()
+        expected = expected.strip().lower()
         actual = actual.strip().lower()
         if expected == actual:
             return 1.0
@@ -44,51 +44,46 @@ class MockGrader(BaseGrader):
 
 class LLMGrader(BaseGrader):
     def __init__(self):
-        api_key = getattr(settings, 'GOOGLE_API_KEY', os.getenv('GOOGLE_API_KEY'))
-        if api_key:
-            genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel('gemini-pro')
+        self.backend = self._get_backend()
+
+    def _get_backend(self) -> LLMBackend:
+        provider = getattr(settings, 'LLM_PROVIDER', '').upper()
+        if provider == 'OPENAI':
+            return OpenAIBackend()
         else:
-            self.model = None
-            logger.warning("GOOGLE_API_KEY not found. LLMGrader will fail or return default scores.")
+            return GeminiBackend()
 
-    def prepare_prompt(self, expected: str, actual: str, template: str) -> str:
-        default_template = "Expected: {expected}\nStudent: {actual}\nResult: 0.0-1.0 only."
+    def prepare_prompt(self, expected: str, actual: str, template: str = None) -> str:
+        default_template = (
+            "You are an automated grading assistant.\n"
+            "Expected Answer: {expected}\n"
+            "Student Answer: {actual}\n"
+            "Grade the student's answer based on the expected answer.\n"
+            "Return ONLY a numeric score between 0.0 and 1.0.\n"
+            "0.0 means completely wrong, 1.0 means correct match."
+        )
         active_template = template or default_template
-
-        # checking if the template contains the required placeholders and add if otherwise
+        
+        # Ensure placeholders exist in template
         if "{expected}" not in active_template or "{actual}" not in active_template:
-            active_template += "\n\nContext for grading:\nExpected: {expected}\nStudent Answer: {actual}"
+             active_template += "\n\nContext for grading:\nExpected: {expected}\nStudent Answer: {actual}"
 
         return active_template.format(expected=expected, actual=actual)
 
     def grade(self, expected: str, actual: str, template: str = None) -> float:
-        if not self.model:
-            logger.error("LLMGrader is not configured with an API key.")
-            return 0.0
-
         prompt = self.prepare_prompt(expected, actual, template)
-        try:
-            response = self.model.generate_content(prompt)
-            score_text = response.text.strip()
-            print(score_text)
-            return float(score_text)
-        except Exception as e:
-            logger.error(f"Error in LLMGrader: {e}")
-            return 0.0
+        score = self.backend.generate_score(prompt)
+        return score if score is not None else 0.0
 
 
 class GradingFactory:
     @staticmethod
     def get_grader() -> BaseGrader:
-        print(getattr(settings, 'GRADING_ENGINE'))
-        print(settings.GRADING_ENGINE)
         engine = getattr(settings, 'GRADING_ENGINE')
-
         if engine == 'LLM':
             return LLMGrader()
-        else:
-            return MockGrader()
+
+        return MockGrader()
 
 
 class GradingService:
@@ -96,21 +91,25 @@ class GradingService:
     @staticmethod
     def grade_submission(submission: Submission):
         grader = GradingFactory.get_grader()
-        print('grader', grader)
         total_score = 0.0
+        
+        # Prefetch questions to optimize access if not already done
+        answers = submission.answers.select_related('question', 'selected_option').all()
 
-        for answer in submission.answers.all():
+        for answer in answers:
             question = answer.question
             score = 0.0
 
             if question.question_type == 'MCQ':
                 if answer.selected_option and (
-                    question.expected_answer == str(answer.id) or
+                    question.expected_answer == str(answer.id) or # supporting ID match or
                     answer.selected_option.is_correct
                 ):
                     score = 1.0
             elif question.question_type == 'SHORT':
-                score = grader.grade(question.expected_answer, answer.short_answer_text or "")
+                # Use exam's prompt template if available
+                template = submission.exam.grading_prompt
+                score = grader.grade(question.expected_answer, answer.short_answer_text or "", template=template)
 
             answer.score = score
             answer.save()
@@ -118,8 +117,10 @@ class GradingService:
 
         question_count = submission.exam.questions.count()
         submission.total_score = total_score
-        submission.grade = (total_score/question_count) *100 if question_count > 0 else 0.0
-        if submission.answers.count() == question_count:
+        submission.grade = (total_score / question_count) * 100 if question_count > 0 else 0.0
+        
+        if answers.count() == question_count:
             submission.is_completed = True
+            submission.completed_at = timezone.now()
 
         submission.save()
